@@ -4,10 +4,13 @@
 > *Stop burning $25/mo on managed PostgreSQL instances for your side projects. Ship production apps with microsecond latencies and $0 database bills.*
 
 [![Next.js 15](https://img.shields.io/badge/Next.js-15.1-black?style=flat&logo=next.js)](https://nextjs.org)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Online-10b981?style=flat&logo=railway)](https://litesaas-production.up.railway.app)
 [![SQLite WAL](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?style=flat&logo=sqlite)](https://locionic.com/en/blog/sqlite-wal-mode-production-concurrency)
 [![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-0.38-C5F74F?style=flat)](https://orm.drizzle.team)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
+
+👉 **Live Interactive Demo:** [https://litesaas-production.up.railway.app](https://litesaas-production.up.railway.app) *(Instant login: `demo@litesaas.dev` / `password123`)*
 
 ---
 
