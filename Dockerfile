@@ -33,10 +33,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts ./scripts
 COPY litestream.yml /etc/litestream.yml
 
 EXPOSE 3000
 ENV PORT=3000
 
-# Start script: optionally restores from S3 on boot, then replicates in background
-CMD ["sh", "-c", "if [ -n \"$LITESTREAM_BUCKET\" ]; then litestream restore -if-replica-exists -config /etc/litestream.yml /app/data/app.db && exec litestream replicate -config /etc/litestream.yml -exec 'node_modules/.bin/next start'; else exec node_modules/.bin/next start; fi"]
+# Start script: initializes database tables, optionally restores from S3, then replicates in background
+CMD ["sh", "-c", "node scripts/init-db.mjs && if [ -n \"$LITESTREAM_BUCKET\" ]; then litestream restore -if-replica-exists -config /etc/litestream.yml /app/data/app.db && exec litestream replicate -config /etc/litestream.yml -exec 'node_modules/.bin/next start'; else exec node_modules/.bin/next start; fi"]
