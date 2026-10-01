@@ -73,10 +73,11 @@ test('a table that is missing entirely is created', () => {
     // Existence, not contents: the table comes back empty. Read-write, not
     // readonly — a read-only handle cannot open the -shm file a WAL database
     // needs, so it reports nothing about tables it did not write.
-    const tables = new Database(dbPath)
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-      .all()
-      .map((r) => r.name);
+    const tables = (
+      new Database(dbPath)
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all() as { name: string }[]
+    ).map((r) => r.name);
     assert.ok(tables.includes('subscriptions'), `expected subscriptions, found ${tables.join(', ')}`);
   });
 });
