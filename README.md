@@ -10,7 +10,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-👉 **Live Interactive Demo:** [https://litesaas-production.up.railway.app](https://litesaas-production.up.railway.app) *(Instant login: `demo@litesaas.dev` / `password123`)*
+👉 **Live Interactive Demo:** [https://litesaas-production.up.railway.app](https://litesaas-production.up.railway.app) *(Instant login: `demo@litesaas.dev` / `password123`)* — that deployment sets `SEED_DEMO_USER=true`. A default deploy does **not**, so it shows neither the account nor the login banner.
 
 ---
 
@@ -105,6 +105,16 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 > **Instant Demo Credentials:**  
 > Email: `demo@litesaas.dev`  
 > Password: `password123`
+>
+> Seeded automatically by `npm run dev`. In production this account is **not**
+> created — it has a published password and a Pro plan, so enabling it on a real
+> deployment ships a backdoor. Only set `SEED_DEMO_USER=true` for a hosted
+> public demo, never for a deployment with real users.
+>
+> `docker compose` reads that flag from your `.env` (no edit to the compose file
+> needed). Note that a host with an ephemeral disk — a Railway container, most
+> PaaS free tiers — starts with an empty database on every deploy, so a hosted
+> demo needs the flag on *every* deploy, not just the first.
 
 ---
 
@@ -115,6 +125,22 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```bash
 docker compose up -d
 ```
+
+Serve it over HTTPS. The session cookie is `Secure` in production, and browsers
+refuse to store a `Secure` cookie from a plain-`http` response — Coolify and Dokku
+terminate TLS for you, and on a bare VPS put Caddy or nginx in front.
+
+If you're taking payments, set `NEXT_PUBLIC_APP_URL` in `.env` to the deployment's
+public origin **before building** — Stripe returns a customer to it after they
+pay, and Next.js inlines `NEXT_PUBLIC_*` when it builds, so setting it in the
+container afterwards does nothing:
+
+```bash
+docker compose build --no-cache && docker compose up -d
+```
+
+Until it's set, checkout is refused with an explanation on the dashboard rather
+than taking the money and returning the customer to `localhost`.
 
 ### Option B: Deploying with Litestream S3 Backup
 

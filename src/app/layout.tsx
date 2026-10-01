@@ -5,7 +5,15 @@ import { Database, Github, ArrowRight, Sparkles } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
-  title: 'LiteSaaS - Zero-Cost Production Next.js 15 + SQLite SaaS Starter Kit',
+  // `default` is the landing page: it sits in the same segment as this layout,
+  // so the template below does not reach it and it keeps its full marketing
+  // title. Every page under it composes "%s · LiteSaaS", so two open tabs, a
+  // bookmark and a search result each name the page you are on instead of all
+  // four rendering the landing page's SEO copy.
+  title: {
+    default: 'LiteSaaS - Zero-Cost Production Next.js 15 + SQLite SaaS Starter Kit',
+    template: '%s · LiteSaaS',
+  },
   description:
     'Stop paying $25/mo for managed PostgreSQL. Production-ready Next.js 15 boilerplate powered by SQLite, Drizzle ORM, Self-Hosted Auth, and Litestream S3 backup.',
   openGraph: {
@@ -13,6 +21,11 @@ export const metadata: Metadata = {
     description: 'Production-ready SQLite architecture with 5,000+ req/s concurrency and zero database bills.',
     type: 'website',
   },
+  // Next auto-detects app/icon.*, never a file sitting in public/. So the
+  // favicon this repo ships was never linked: the browser fell back to
+  // /favicon.ico, which 404s — one 404 in the container log on every page load,
+  // and the generic globe icon in every tab.
+  icons: { icon: '/favicon.svg' },
 };
 
 export default async function RootLayout({

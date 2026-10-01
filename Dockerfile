@@ -19,6 +19,13 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
+# Next.js inlines NEXT_PUBLIC_* at build time, in the server bundle too — a
+# value set in the container's environment afterwards is never read. This is the
+# app origin Stripe returns a paying customer to, so it has to be baked in here.
+# Unset means http://localhost:3000, which src/app/actions/billing.ts refuses to
+# charge against rather than dead-link the customer.
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 RUN npm run build
 
 # Step 4: Production Runner
@@ -39,5 +46,8 @@ COPY litestream.yml /etc/litestream.yml
 EXPOSE 3000
 ENV PORT=3000
 
-# Start script: initializes database tables, optionally restores from S3, then replicates in background
-CMD ["sh", "-c", "node scripts/init-db.mjs && if [ -n \"$LITESTREAM_BUCKET\" ]; then litestream restore -if-replica-exists -config /etc/litestream.yml /app/data/app.db && exec litestream replicate -config /etc/litestream.yml -exec 'node_modules/.bin/next start'; else exec node_modules/.bin/next start; fi"]
+# Start script: restores from S3 (if configured), then initializes/validates the
+# schema, then replicates in background. The restore deliberately comes FIRST:
+# init-db checks the restored file for missing columns, and running it before
+# would only ever check the empty file the restore is about to replace.
+CMD ["sh", "-c", "if [ -n \"$LITESTREAM_BUCKET\" ]; then litestream restore -if-replica-exists -config /etc/litestream.yml /app/data/app.db; fi && node scripts/init-db.mjs && if [ -n \"$LITESTREAM_BUCKET\" ]; then exec litestream replicate -config /etc/litestream.yml -exec 'node_modules/.bin/next start'; else exec node_modules/.bin/next start; fi"]

@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "node scripts/init-db.mjs && next start",
     "lint": "next lint",
+    "test": "node --test tests/*.test.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

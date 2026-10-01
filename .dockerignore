@@ -1,0 +1,35 @@
+# Without this, `COPY . .` in the builder stage (Dockerfile) drags host files in
+# on top of the ones the image just built:
+#
+#   - node_modules/ overwrites the container's Linux-built copy. On a macOS or
+#     Windows host that ships a darwin/win32 better-sqlite3 binary and the
+#     container dies on require. This is the most common "works on my machine"
+#     break in the kit, because the README quickstart is
+#     clone -> npm install -> docker compose up.
+#   - .env (real Stripe/Litestream secrets) and data/app.db (password hashes)
+#     land in a build layer, where they stay readable in image history long
+#     after the file is gone from the working tree.
+#
+# The DB is supplied at runtime by the ./data bind mount in docker-compose.yml,
+# and the runner stage creates /app/data itself, so nothing is lost here.
+
+node_modules
+.next
+.git
+.gitignore
+
+data
+.env
+.env*.local
+
+# Generated / typecheck artifacts
+*.tsbuildinfo
+
+# Not needed to build or run; the runner copies only .next, public,
+# node_modules, package.json and scripts out of the builder.
+tests
+drizzle
+Dockerfile
+docker-compose.yml
+README.md
+LICENSE

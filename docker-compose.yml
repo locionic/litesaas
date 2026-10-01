@@ -2,13 +2,22 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # A build arg, not an environment entry: Next.js inlines NEXT_PUBLIC_*
+        # when it builds, so the app origin Stripe returns a paying customer to
+        # has to be present then. Changing it means `docker compose build --no-cache`.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     ports:
       - '3000:3000'
     volumes:
       - ./data:/app/data
     environment:
       - DATABASE_URL=data/app.db
-      - AUTH_SECRET=dev-secret-key-change-in-production
-      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      # Compose interpolates ${VAR} from the project .env automatically, so this
+      # reads the same file as every other setting instead of needing an edit
+      # here. Defaults off: the demo account has a published password and a Pro
+      # plan, so it is only ever something a deliberate opt-in turns on.
+      - SEED_DEMO_USER=${SEED_DEMO_USER:-false}
     restart: unless-stopped

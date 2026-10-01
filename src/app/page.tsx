@@ -15,11 +15,22 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { PLANS } from '@/lib/stripe';
-import { seedDemoUserIfNeeded } from '@/lib/auth';
+import { getCurrentUser, seedDemoUserIfNeeded } from '@/lib/auth';
 
 export default async function HomePage() {
   // Ensure demo user is seeded for instant evaluation
   await seedDemoUserIfNeeded();
+
+  // Where the calls to action point depends on whether an account already
+  // exists. They used to be hardcoded, so a signed-in free user who clicked the
+  // card labelled "Upgrade to Pro" was sent to the create-an-account form, filled
+  // it in with the address they had already registered, and was told "An account
+  // with this email already exists" — the upgrade they asked for nowhere to be
+  // found. The nav has always swapped its own links for a Dashboard link when
+  // signed in; the page body now agrees with it.
+  const user = await getCurrentUser();
+  const signup = user ? '/dashboard' : '/register';
+  const tryDemo = user ? '/dashboard' : '/login';
 
   return (
     <div className="space-y-24 pb-20">
@@ -50,14 +61,14 @@ export default async function HomePage() {
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            href="/register"
+            href={signup}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-emerald-500 text-zinc-950 font-bold px-6 py-3.5 rounded-xl hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98]"
           >
             Get Started Free
             <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
-            href="/login"
+            href={tryDemo}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-zinc-900 border border-white/10 text-zinc-200 font-semibold px-6 py-3.5 rounded-xl hover:bg-zinc-800 transition-colors"
           >
             Try Live Demo
@@ -286,7 +297,7 @@ export default async function HomePage() {
               </div>
 
               <Link
-                href="/register"
+                href={signup}
                 className={`w-full text-center py-3 px-4 rounded-xl text-sm font-bold transition-all ${
                   plan.popular
                     ? 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shadow-md shadow-emerald-500/20'
@@ -311,7 +322,7 @@ export default async function HomePage() {
           </p>
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/register"
+              href={signup}
               className="inline-flex items-center gap-2 bg-emerald-500 text-zinc-950 font-bold px-7 py-3.5 rounded-xl hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/25"
             >
               Start Building Now

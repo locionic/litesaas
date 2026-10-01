@@ -4,7 +4,7 @@ import * as schema from './schema';
 import fs from 'fs';
 import path from 'path';
 
-const DB_PATH = process.env.DATABASE_URL || 'data/app.db';
+export const DB_PATH = process.env.DATABASE_URL || 'data/app.db';
 
 // Ensure data directory exists
 const dir = path.dirname(DB_PATH);
