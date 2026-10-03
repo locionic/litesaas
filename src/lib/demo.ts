@@ -10,10 +10,19 @@
  *
  * The account has a published password and a Pro plan, so it is opt-in in
  * production. A local clone needs nothing: development always seeds it.
+ *
+ * `=== 'development'`, deliberately, not `!== 'production'`. This is the only
+ * check in the app that decides whether a *known* password is live, so "yes"
+ * has to be positively established. Blocklisting production makes every other
+ * value — `staging`, `test`, `''`, unset, a typo, a deploy that never set the
+ * variable — read as a developer machine and plant the account, in exactly the
+ * environments nobody was thinking about when they ran the deploy. That is also
+ * why the login banner is not enough on its own: it would advertise the
+ * credentials beside the form. SEED_DEMO_USER is the one way to opt in.
  */
 export function isDemoEnabled(env: {
   NODE_ENV?: string;
   SEED_DEMO_USER?: string;
 }): boolean {
-  return env.NODE_ENV !== 'production' || env.SEED_DEMO_USER === 'true';
+  return env.NODE_ENV === 'development' || env.SEED_DEMO_USER === 'true';
 }

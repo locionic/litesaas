@@ -11,7 +11,7 @@ import { isStaleEvent, notStaleSql } from '@/lib/webhook-guard';
  */
 
 interface LsMeta {
-  custom_data?: { user_id?: string } | null;
+  custom_data?: { checkout_nonce?: string } | null;
 }
 
 interface LsSubscription {
@@ -56,22 +56,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  // ponytail: we resolve the user from meta.custom_data.user_id (stashed at
-  // checkout time) instead of persisting the LS subscription id. That keeps the
-  // schema untouched. Ceiling: because `POST /v1/checkouts` is public, anyone
-  // who knows the store id can set that field to an arbitrary user id, so a
-  // crafted checkout + refund can downgrade somebody else's account. The
-  // variant check below bounds it to a real paid order for this product; to
-  // close it fully, add a lemonSqueezySubscriptionId column to `subscriptions`
-  // and match events on that instead.
+  // The row is resolved by a nonce we minted, not by anything the event itself
+  // asserts. `POST /v1/checkouts` is public, so anyone who knows the store id
+  // can create a checkout with any `custom` payload they like and pay the
+  // smallest amount that counts — previously `custom_data.user_id` named the
+  // account, so that checkout plus a refund downgraded a stranger's licence.
+  //
+  // The obvious fix is to persist the LemonSqueezy subscription id and match on
+  // that, and it is the right shape. It is not executable today: per
+  // https://docs.lemonsqueezy.com/api/checkouts the checkout response carries
+  // only `data.id` and store/variant relationships, with no subscription id to
+  // store. A nonce round-trips through a mechanism already in use (the same
+  // `custom_data` field the user id used), so it needs no assumption about the
+  // rest of the payload. If LemonSqueezy ever returns the subscription id at
+  // checkout time, prefer it and drop this column.
   const attrs = event?.data?.attributes;
   if (!attrs) {
     return NextResponse.json({ received: true, skipped: 'no attributes' });
   }
 
-  const userId = attrs.meta?.custom_data?.user_id;
-  if (!userId) {
-    return NextResponse.json({ received: true, skipped: 'no user_id' });
+  const nonce = attrs.meta?.custom_data?.checkout_nonce;
+  if (!nonce) {
+    return NextResponse.json({ received: true, skipped: 'no checkout_nonce' });
   }
 
   // LemonSqueezy does not guarantee ordering and retries for days, so a
@@ -87,7 +93,7 @@ export async function POST(req: NextRequest) {
   // future — where nothing is ever stale and the guard silently does nothing.
   const createdAt = event.meta?.created_at ? Date.parse(event.meta.created_at) / 1000 : NaN;
   const row = await db.query.subscriptions.findFirst({
-    where: eq(subscriptions.userId, userId),
+    where: eq(subscriptions.lemonNonce, nonce),
   });
   if (!row) {
     return NextResponse.json({ received: true, skipped: 'no subscription' });
@@ -106,7 +112,7 @@ export async function POST(req: NextRequest) {
       await db
         .update(subscriptions)
         .set({ plan: 'pro', status: 'active', updatedAt: new Date() })
-        .where(and(eq(subscriptions.userId, userId), notStaleSql(subscriptions.updatedAt, createdAt)));
+        .where(and(eq(subscriptions.lemonNonce, nonce), notStaleSql(subscriptions.updatedAt, createdAt)));
       break;
     }
 
@@ -117,7 +123,7 @@ export async function POST(req: NextRequest) {
       await db
         .update(subscriptions)
         .set({ plan: 'free', status: 'canceled', updatedAt: new Date() })
-        .where(and(eq(subscriptions.userId, userId), notStaleSql(subscriptions.updatedAt, createdAt)));
+        .where(and(eq(subscriptions.lemonNonce, nonce), notStaleSql(subscriptions.updatedAt, createdAt)));
       break;
     }
 
@@ -134,7 +140,7 @@ export async function POST(req: NextRequest) {
       await db
         .update(subscriptions)
         .set({ plan, status, updatedAt: new Date() })
-        .where(and(eq(subscriptions.userId, userId), notStaleSql(subscriptions.updatedAt, createdAt)));
+        .where(and(eq(subscriptions.lemonNonce, nonce), notStaleSql(subscriptions.updatedAt, createdAt)));
       break;
     }
   }

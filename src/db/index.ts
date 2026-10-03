@@ -21,10 +21,7 @@ declare global {
 }
 
 function createSqliteConnection(): Database.Database {
-  const sqlite = new Database(DB_PATH, {
-    timeout: 5000,
-    verbose: process.env.NODE_ENV === 'development' ? undefined : undefined,
-  });
+  const sqlite = new Database(DB_PATH, { timeout: 5000 });
 
   /**
    * BATTLE-TESTED SQLITE PRODUCTION PRAGMAS

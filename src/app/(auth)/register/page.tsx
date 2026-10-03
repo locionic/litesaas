@@ -47,7 +47,7 @@ export default function RegisterPage() {
                   required
                   maxLength={MAX_NAME}
                   placeholder="Alex Chen"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 focus:outline-2 focus:outline-offset-2 focus:outline-emerald-500 transition-colors"
                 />
               </div>
             </div>
@@ -64,7 +64,7 @@ export default function RegisterPage() {
                   required
                   maxLength={MAX_EMAIL}
                   placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 focus:outline-2 focus:outline-offset-2 focus:outline-emerald-500 transition-colors"
                 />
               </div>
             </div>
@@ -82,7 +82,7 @@ export default function RegisterPage() {
                   minLength={MIN_PASSWORD}
                   maxLength={MAX_PASSWORD}
                   placeholder="At least 8 characters"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 focus:outline-2 focus:outline-offset-2 focus:outline-emerald-500 transition-colors"
                 />
               </div>
             </div>

@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+// The same helper that produced `serverText`. They have to agree by
+// construction: page.tsx renders formatDate(iso) into `serverText`, and this
+// component re-renders that exact string in the browser. Written out separately
+// the two were free to diverge, and then the row showed the server's answer on
+// first paint and silently changed after hydration — a date that edits itself
+// under the reader, with no render to attribute it to.
+import { formatDate } from '@/lib/utils';
 
 /**
  * A project timestamp, shown in the viewer's own timezone.
@@ -20,13 +27,7 @@ export default function LocalDate({ iso, serverText }: { iso: string; serverText
   const [text, setText] = useState(serverText);
 
   useEffect(() => {
-    setText(
-      new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }).format(new Date(iso))
-    );
+    setText(formatDate(iso));
   }, [iso]);
 
   // `dateTime` carries the unambiguous instant either way, so a wrong guess

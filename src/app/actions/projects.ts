@@ -6,19 +6,8 @@ import { projects } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
-import { validateProject } from '@/lib/validate';
+import { validateProject, formText, UserError } from '@/lib/validate';
 import { projectLimitFor, FREE_PROJECT_LIMIT } from '@/lib/stripe';
-
-/**
- * Read a text field. A server action accepts multipart/form-data, so a client
- * can send any field as a File part — `formData.get('name') as string` would be
- * a lie and `File.prototype.trim` does not exist, which 500s the action. A
- * non-string part is simply absent as far as this form is concerned.
- */
-function text(formData: FormData, key: string): string {
-  const value = formData.get(key);
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 export type ProjectState = { error?: string };
 
@@ -41,21 +30,32 @@ export async function createProjectAction(
   try {
     return await create(user, formData);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : 'Could not create the project. Try again.' };
+    // Only the messages `create` wrote on purpose. Everything else reaching here
+    // came out of the driver — a busy database, a closed file, a schema the
+    // migration never applied — and its text is SQLite's: constraint names,
+    // column lists, and on SQLITE_CANTOPEN the absolute path of the database
+    // file. That is a description of the operator's disk, rendered in the form
+    // for anyone who can make an insert fail.
+    return {
+      error:
+        err instanceof UserError
+          ? err.message
+          : 'Could not create the project. Try again.',
+    };
   }
 }
 
 type User = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
 
 async function create(user: User, formData: FormData): Promise<ProjectState> {
-  const name = text(formData, 'name');
-  const description = text(formData, 'description') || null;
+  const name = formText(formData, 'name');
+  const description = formText(formData, 'description') || null;
 
   // The form's `required` is a client-side suggestion only; this is the
   // enforcement, and it is also what bounds a single row.
   const invalid = validateProject({ name, description });
   if (invalid) {
-    throw new Error(invalid);
+    throw new UserError(invalid);
   }
 
   // The pricing table promises Free "Up to 3 active projects" and Pro
@@ -69,7 +69,7 @@ async function create(user: User, formData: FormData): Promise<ProjectState> {
     .where(and(eq(projects.userId, user.id), eq(projects.status, 'active')));
 
   if (Number(active) >= projectLimitFor(user.subscriptionPlan)) {
-    throw new Error(
+    throw new UserError(
       `The free plan includes ${FREE_PROJECT_LIMIT} active projects. Archive one to make room, or upgrade to Pro.`
     );
   }
@@ -135,4 +135,64 @@ export async function toggleProjectStatusAction(projectId: string) {
     );
 
   revalidatePath('/dashboard');
+}
+
+/**
+ * Rename a project, or change its description.
+ *
+ * `projectId` comes first so `updateProjectAction.bind(null, id)` is the
+ * `(prevState, formData) => state` shape `useActionState` needs — the same trick
+ * `toggleProjectStatusAction` uses, and the reason this is not a second
+ * action-shaped wrapper.
+ *
+ * The form posts to whatever URL it is on, so a rename made while the dashboard
+ * filter is open keeps `?q=` across the round trip. That cuts both ways and
+ * knowingly: rename a project out of the current search and its row leaves the
+ * list, which is the filter doing its job rather than a lost save.
+ */
+export async function updateProjectAction(
+  projectId: string,
+  _prev: ProjectState | null,
+  formData: FormData
+): Promise<ProjectState> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: 'Your session expired. Sign in again to make this change.' };
+  }
+
+  try {
+    const name = formText(formData, 'name');
+    const description = formText(formData, 'description') || null;
+
+    // The same enforcement as create, reached the same way: the input's
+    // `required` and `maxLength` are browser suggestions on a plain POST.
+    const invalid = validateProject({ name, description });
+    if (invalid) {
+      throw new UserError(invalid);
+    }
+
+    await db
+      .update(projects)
+      // A fixed list of columns, not the form body spread into the update. A
+      // server action is a plain POST, so anyone can add `status=active` to an
+      // archived project's form and un-archive it, or send `userId=` and try to
+      // move the row to an account they control. Naming the columns here is what
+      // makes those two requests inert — the form decides the *values* of two
+      // fields, and this line decides that they are the only two it decides.
+      .set({ name, description, updatedAt: new Date() })
+      // Owner scope in the WHERE clause, like every other write here — the
+      // trust boundary, not a filter applied afterwards. Without it this is the
+      // first action in the app that edits a row on an id alone.
+      .where(and(eq(projects.id, projectId), eq(projects.userId, user.id)));
+
+    revalidatePath('/dashboard');
+    return {};
+  } catch (err) {
+    return {
+      error:
+        err instanceof UserError
+          ? err.message
+          : 'Could not save your changes. Try again.',
+    };
+  }
 }

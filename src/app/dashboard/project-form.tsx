@@ -60,7 +60,7 @@ export default function ProjectForm({
             required
             maxLength={MAX_NAME}
             placeholder="e.g. AI Video Repurposer"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 focus:outline-2 focus:outline-offset-2 focus:outline-emerald-500 transition-colors"
           />
         </div>
 
@@ -73,7 +73,7 @@ export default function ProjectForm({
             rows={3}
             maxLength={MAX_DESCRIPTION}
             placeholder="A brief overview of what this project does..."
-            className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-white/10 bg-zinc-900 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500 focus:outline-2 focus:outline-offset-2 focus:outline-emerald-500 transition-colors"
           />
         </div>
 

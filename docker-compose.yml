@@ -1,23 +1,59 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       args:
         # A build arg, not an environment entry: Next.js inlines NEXT_PUBLIC_*
-        # when it builds, so the app origin Stripe returns a paying customer to
-        # has to be present then. Changing it means `docker compose build --no-cache`.
+        # when it builds, so these have to be present then. Both are read on the
+        # server by src/app/actions/billing.ts, and the compiled bundle carries
+        # them as string literals with no process.env read surviving — so the
+        # price id is as build-time as the app URL, despite looking like a
+        # runtime secret. Changing either means `docker compose build --no-cache`.
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_STRIPE_PRO_PRICE_ID: ${NEXT_PUBLIC_STRIPE_PRO_PRICE_ID:-}
     ports:
       - '3000:3000'
     volumes:
       - ./data:/app/data
     environment:
-      - DATABASE_URL=data/app.db
+      # Interpolated rather than a fixed literal, or "change the database
+      # location in .env" is a no-op: the app would follow DATABASE_URL to one
+      # file while litestream.yml and the CMD's restore kept replicating the one
+      # this line hardcodes. Backups then succeed forever over a database
+      # nothing writes. Absolute because Litestream resolves a relative path
+      # against its own working directory; identical to the previous
+      # `data/app.db`, since WORKDIR is /app.
+      - DATABASE_URL=${DATABASE_URL:-/app/data/app.db}
       # Compose interpolates ${VAR} from the project .env automatically, so this
       # reads the same file as every other setting instead of needing an edit
       # here. Defaults off: the demo account has a published password and a Pro
       # plan, so it is only ever something a deliberate opt-in turns on.
       - SEED_DEMO_USER=${SEED_DEMO_USER:-false}
+      # Whether a reverse proxy in front rewrites X-Forwarded-For, which is the
+      # only thing that makes the per-network sign-in and signup limits sound.
+      # Defaults false: with no proxy the header is the caller's own, so a
+      # limit keyed on it is a limit the caller can switch off — and behind a
+      # published port every visitor is the same address, which makes it a global
+      # limit that locks everyone out on one stranger's guesses. See
+      # src/app/actions/auth.ts clientIp.
+      - TRUST_PROXY=${TRUST_PROXY:-false}
+      # Billing. Without these reaching the container the README's "set your keys
+      # in .env" is a no-op: compose uses .env to interpolate this file, it does
+      # not forward it into the container, so an unlisted variable is simply
+      # absent. Checkout then reports itself unconfigured.
+      - BILLING_PROVIDER=${BILLING_PROVIDER:-stripe}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - LEMONSQUEEZY_API_KEY=${LEMONSQUEEZY_API_KEY:-}
+      - LEMONSQUEEZY_STORE_ID=${LEMONSQUEEZY_STORE_ID:-}
+      - LEMONSQUEEZY_VARIANT_ID=${LEMONSQUEEZY_VARIANT_ID:-}
+      - LEMONSQUEEZY_WEBHOOK_SECRET=${LEMONSQUEEZY_WEBHOOK_SECRET:-}
+      # Litestream. The Dockerfile's CMD branches on $LITESTREAM_BUCKET, so an
+      # unset value silently skips both the restore and the replicate — an
+      # operator who followed the README got a backup they did not have, with no
+      # error to say so. Unset keeps the app fully working, just unreplicated.
+      - LITESTREAM_BUCKET=${LITESTREAM_BUCKET:-}
+      - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT:-}
+      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID:-}
+      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY:-}
     restart: unless-stopped

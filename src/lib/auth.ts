@@ -117,8 +117,20 @@ export async function destroySession(): Promise<void> {
   if (sessionId) {
     try {
       await db.delete(sessions).where(eq(sessions.id, sessionId));
-    } catch {
-      // Ignore if session already deleted
+    } catch (err) {
+      // Not "already deleted": DELETE on a row that is not there removes zero
+      // rows and does not throw, so this catch is never that case. It is every
+      // other fault — SQLITE_BUSY past the 5s busy_timeout, a full disk, a
+      // read-only mount.
+      //
+      // And the failure runs the wrong way. The cookie below is cleared either
+      // way, so the user is shown a signed-out app while the row they just tried
+      // to revoke is still live for its remaining 30 days, and anything that
+      // captured the token before this call keeps authenticating. Silent, on the
+      // one control whose job is to be silent-fail-closed. Same reasoning as
+      // getCurrentUser's catch above: keep the request alive, make the failure
+      // visible.
+      console.error('destroySession failed to revoke the session row', err);
     }
   }
 
@@ -147,22 +159,45 @@ export async function seedDemoUserIfNeeded() {
 
     if (!existing) {
       const demoId = 'usr_demo123456';
-      await db.insert(users).values({
-        id: demoId,
-        email: DEMO_EMAIL,
-        name: 'Demo Founder',
-        passwordHash: hashPassword('password123'),
-        role: 'user',
-      });
+      // Both rows or neither. subscriptions.user_id is a FK to users.id, so the
+      // second insert cannot survive the first failing — but a fault *between*
+      // them could: the user row lands, the subscription does not, and the
+      // `if (!existing)` gate above then makes that permanent. Every later visit
+      // found the user and skipped, so the demo account settled on the schema's
+      // default 'free' plan for good — capping every visitor at three projects
+      // in the one account they use to judge the paid tier — and nothing
+      // anywhere said so. Rolled back, the next visit just retries.
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values({
+          id: demoId,
+          email: DEMO_EMAIL,
+          name: 'Demo Founder',
+          passwordHash: hashPassword('password123'),
+          role: 'user',
+        });
 
-      await db.insert(subscriptions).values({
-        id: 'sub_demo123456',
-        userId: demoId,
-        plan: 'pro',
-        status: 'active',
+        await tx.insert(subscriptions).values({
+          id: 'sub_demo123456',
+          userId: demoId,
+          plan: 'pro',
+          status: 'active',
+        });
       });
     }
-  } catch {
-    // Already seeded or ignore
+  } catch (err) {
+    // The transaction rolled back, so the next landing-page visit retries from
+    // clean. Swallowed on purpose — a failed seed must not 500 the marketing
+    // page, and the demo account is an affordance, not a dependency — but
+    // logged, because swallowing is about the response and not the evidence.
+    //
+    // Without it the failure is invisible from both ends. The marketing page
+    // renders fine, and `isDemoEnabled` keeps the login banner advertising
+    // "Pre-seeded demo account available" with an auto-fill button for an
+    // account that was never created. That is the drift the predicate exists to
+    // prevent — banner and server disagreeing about whether the account exists
+    // — arriving because the seed failed rather than because the gate
+    // disagreed. The visitor is told "Invalid email or password" and nobody has
+    // any idea why.
+    console.error('demo seed failed; the login banner will keep advertising it', err);
   }
 }

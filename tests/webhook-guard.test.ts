@@ -75,6 +75,23 @@ test('accepts a numeric timestamp as well as a Date', () => {
   assert.equal(isStaleEvent(unix(NOW + 1_000), NOW), false);
 });
 
+test('the grace is a minute, so a queued retry cannot slip through it', () => {
+  // Every test above reads CLOCK_SKEW_GRACE_SECONDS symbolically, so all of them
+  // pass at any value: the constant cancels out and what they check is that the
+  // grace is *applied*, never how long it is. Widening it to ten minutes — the
+  // obvious edit when someone reports a dropped upgrade — is invisible to the
+  // whole file, and it reopens the bug this module exists to prevent: a
+  // `subscription_created` that 500'd and was retried five minutes later now
+  // counts as fresh and resurrects a cancelled subscription with no later event
+  // behind it to undo that.
+  //
+  // Stated as a literal rather than the constant, so this asserts the guarantee
+  // the comment above it makes — a minute — instead of the tautology that the
+  // symbol equals itself.
+  assert.equal(CLOCK_SKEW_GRACE_SECONDS, 60, 'the skew grace is no longer a minute');
+  assert.equal(isStaleEvent(unix(NOW - 61_000), at(NOW)), true, '61s behind is a queued retry, not clock skew');
+});
+
 // The read that drives isStaleEvent is only valid until the next await, and both
 // providers deliver concurrently as well as out of order. So the guard is also
 // written into each UPDATE's WHERE. These run against a real database, because
@@ -206,22 +223,40 @@ test('every mutating webhook update carries the watermark', () => {
   // The behavioural tests above prove notStaleSql works; nothing else stops a
   // later edit from dropping it from a handler and silently reopening the race.
   const read = (rel: string) =>
-    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
   for (const rel of [
     '../src/app/api/webhooks/stripe/route.ts',
     '../src/app/api/webhooks/lemonsqueezy/route.ts',
   ]) {
     const body = read(rel);
-    // Slice at each update so a new arm cannot slip in without the guard.
     const arms = body.split('.update(subscriptions)').slice(1);
     assert.ok(arms.length > 0, `${rel}: found no mutating arms to check`);
+
+    // Each arm is bounded by the NEXT one, not by the end of the file. It used
+    // to run to the end, which made the check vacuous for every arm but the
+    // last: dropping the watermark from `checkout.session.completed` left the
+    // three arms below it still inside the slice, the regex matched, and a stale
+    // delivery could go on resurrecting a cancelled subscription. Only the final
+    // arm was ever really checked, and which arm that is differs per file — so
+    // the same edit was caught in one route and missed in the other.
     for (const [i, arm] of arms.entries()) {
       assert.match(
-        arm,
+        arm.split('.update(subscriptions)')[0],
         /notStaleSql\(/,
         `${rel} arm ${i + 1} updates without the watermark in its WHERE`
       );
     }
+
+    // And counted, so a watermark hoisted out of one arm and pasted into another
+    // cannot satisfy the per-arm search above. One call per update, no more.
+    const calls = body.match(/notStaleSql\(/g)?.length ?? 0;
+    assert.equal(
+      calls,
+      arms.length,
+      `${rel}: ${arms.length} mutating arms but ${calls} notStaleSql() calls`
+    );
   }
 });

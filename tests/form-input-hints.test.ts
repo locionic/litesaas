@@ -73,6 +73,49 @@ test('the sign-up and sign-in passwords are not the same field', () => {
   assert.equal(autoCompleteOf(fieldNamed(login, 'login', 'password')), 'current-password');
 });
 
+test('a field declares its purpose in `type` as well as in `autoComplete`', () => {
+  // Same WCAG 1.3.5 requirement as the test above, read off a different
+  // attribute. `autoComplete` says what the field is FOR; `type` says what it
+  // IS, and the two have to agree.
+  //
+  // `type="text"` on a password field is the loud one: the field keeps its
+  // name, its autoComplete, its label, its `required`, its server-side check
+  // and its error banner — every one of which is asserted somewhere in this
+  // file — and renders the password in plain text on the app's front door.
+  // Measured: `type="text"` on login-form.tsx and on register/page.tsx each
+  // left the run at 252/252.
+  //
+  // `type="email"` on an email field is quieter. validateEmail() rejects a
+  // malformed address server-side, so nothing gets stored wrong — what is lost
+  // is the browser's inline refusal and, on a phone, the `@` and `.` keys that
+  // `type="email"` puts on the keyboard. It also makes true a comment in
+  // server-action-contracts.test.ts which claims this file checks that the
+  // markup carries it. It did not; it checked `minLength` and not this.
+  //
+  // Derived from the field name rather than listed, so a third form is covered
+  // without anyone remembering this file — the same reason the limit test below
+  // reads its expectations out of the imports. Fields not named here are
+  // left alone: the project name and description carry no `type` at all, and
+  // requiring one would be a formatting rule, not an input-purpose one.
+  const EXPECTED: Record<string, string> = { password: 'password', email: 'email' };
+
+  let checked = 0;
+  for (const [label, source] of FORMS) {
+    for (const tag of fields(source)) {
+      const name = tag.match(/name="([^"]*)"/)?.[1];
+      if (!name || !(name in EXPECTED)) continue;
+      checked++;
+      assert.match(
+        tag,
+        new RegExp(`type="${EXPECTED[name]}"`),
+        `the ${label} ${name} field is not typed "${EXPECTED[name]}" — it says what it is for in autoComplete ` +
+          `and something else in type`
+      );
+    }
+  }
+  assert.equal(checked, 4, `expected a password and an email on register and on login, checked ${checked}`);
+});
+
 test('the project name is not the account holder', () => {
   // "Project Name" is a record's name, not the user's. Left unlabelled, Chrome
   // offers the signed-in account's own name for it, and the user has to notice
@@ -94,4 +137,38 @@ test("the browser's password hint is the server's, not a copy of it", () => {
   );
   assert.match(register, /minLength=\{MIN_PASSWORD\}/);
   assert.doesNotMatch(register, /minLength=\{\d/, 'a numeric minLength is a second copy of the limit');
+});
+
+test('every limit a form imports from validate is actually used', () => {
+  // The test above pins one attribute. This one is derived from the imports, so
+  // it covers every limit the forms claim to be sharing — and adding an import
+  // tomorrow adds the requirement here for free, the same way init-db.mjs reads
+  // its expectations out of its own DDL.
+  //
+  // It exists because the test above gives false confidence about the *shape*
+  // of the fix. project-form.tsx imports MAX_NAME and MAX_DESCRIPTION with a
+  // comment saying it keeps "the browser's limits and createProjectAction's
+  // server-side limits from drifting apart". Delete either attribute and the
+  // import is still there, the comment is still there, and the sentence is still
+  // in the file asserting something false. Nothing else notices: the constant is
+  // imported, so the import reads as the guarantee.
+  //
+  // What disappears is not a nicety. Without `maxLength` the server is the only
+  // thing bounding the field, so an over-long name comes back as a rejected
+  // submit — the "button that did nothing" failure the error banner on this form
+  // was added to fix, arriving through the other door.
+  let total = 0;
+  for (const [label, source] of FORMS) {
+    const clause = source.match(/import\s*\{([^}]*)\}\s*from\s*'@\/lib\/validate'/);
+    if (!clause) continue; // a form with no shared limits has nothing to drift
+    for (const name of clause[1].split(',').map((n) => n.trim()).filter(Boolean)) {
+      total++;
+      assert.match(
+        source,
+        new RegExp(`\\{${name}\\}`),
+        `${label} imports ${name} from validate to share the server's limit, but no attribute uses it — the constant and the comment now disagree`
+      );
+    }
+  }
+  assert.ok(total >= 3, `this test found only ${total} shared limits and is about to stop proving anything`);
 });

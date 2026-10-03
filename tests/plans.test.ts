@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PLANS, CHECKOUT_MODE, FREE_PROJECT_LIMIT, projectLimitFor } from '../src/lib/stripe.ts';
+import { PLANS, CHECKOUT_MODE, FREE_PROJECT_LIMIT, projectLimitFor, isRealSecret } from '../src/lib/stripe.ts';
 
 // Run: npm test
 //
@@ -101,4 +101,84 @@ test('the outbound checkout call cannot hang forever', () => {
   // Without a timeout, an unresponsive API holds the request open and the
   // action's try/catch never runs.
   assert.match(code('../src/lib/lemonsqueezy.ts'), /AbortSignal\.timeout\(/);
+});
+
+const shipped = (name: string): string | undefined =>
+  readSrc('../.env.example').match(new RegExp(`^${name}=(.*)$`, 'm'))?.[1];
+
+test('every Stripe secret .env.example ships is rejected as unconfigured', () => {
+  // The webhook signing secret is not optional the way an unused variable is.
+  // `checkout.session.completed` is the only thing that turns a paid order into
+  // Pro, and .env.example ships whsec_... — non-empty, so every truthiness test
+  // on it passes, and every delivery fails signature verification instead.
+  for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) {
+    const value = shipped(name);
+    assert.ok(value, `${name} should still be present in .env.example`);
+    assert.equal(
+      isRealSecret(value),
+      false,
+      `${name} ships the placeholder ${JSON.stringify(value)}, which must not read as configured`
+    );
+  }
+});
+
+test('a real secret is still accepted, so the guard is not "always refuse"', () => {
+  // Without this the test above is satisfied by a predicate that returns false
+  // for everything — which would switch checkout off on every deployment,
+  // including the ones paying customers.
+  assert.equal(isRealSecret('sk_test_51' + 'a'.repeat(32)), true);
+  assert.equal(isRealSecret('whsec_' + 'b'.repeat(48)), true);
+  for (const bad of [undefined, '', 'sk_test_...', 'whsec_...', 'a'.repeat(19), '<your_key>']) {
+    assert.equal(isRealSecret(bad), false, `should reject ${JSON.stringify(bad)}`);
+  }
+});
+
+test('LemonSqueezy is not "configured" without its webhook secret', () => {
+  // The same trap on the other provider: with no signing secret every order
+  // webhook 401s, so a paid customer keeps the free plan. This predicate is the
+  // only thing standing between them, because nothing else reads the variable.
+  const ls = code('../src/lib/lemonsqueezy.ts');
+  const predicate = ls.slice(ls.indexOf('export function isLemonSqueezyConfigured'));
+  assert.match(predicate, /webhookSecret/, 'a LemonSqueezy checkout with no webhook secret will 401 on every order');
+});
+
+test('the Stripe client is built from a real key, at a pinned API version', () => {
+  // `isRealSecret` is pinned three times over already — against the values
+  // .env.example ships, against a real key, and as the LemonSqueezy config gate.
+  // The one call that decides whether a client exists at all was not among them.
+  //
+  // Drop `isRealSecret` from that ternary and `new Stripe('sk_test_51...')` is
+  // built happily: a fully-formed client holding a placeholder key. Nothing
+  // throws, nothing logs, and every attempt then fails against the live API
+  // instead of degrading. Three consumers branch on `stripe` being null —
+  // billing.ts:148 decides whether the Upgrade button is rendered at all,
+  // billing.ts:221 picks `?billing=unconfigured` over `?billing=price`, and
+  // api/webhooks/stripe/route.ts:10 refuses without it — so a clone that copied
+  // .env.example gets a storefront that offers to sell, and an error if it tries.
+  // The module's own comment states the intent: treat placeholders as "not
+  // configured" so the zero-config dev demo still works.
+  //
+  // Measured, not assumed: with STRIPE_SECRET_KEY set to a shipped placeholder,
+  // this mutation leaves the entire suite green.
+  const stripeSrc = code('../src/lib/stripe.ts');
+  assert.match(
+    stripeSrc,
+    /isRealSecret\(process\.env\.STRIPE_SECRET_KEY\)\s*\?\s*new Stripe\(/,
+    'the Stripe client is built without checking the key is real, so a copied placeholder reads as configured'
+  );
+
+  // The version is pinned because it decides what the responses *mean*.
+  // LemonSqueezy already has this test — "the request asks for the API version
+  // it parses" — for exactly the failure it describes: ask for a deprecated
+  // version, get a different envelope back, parse a path that is no longer
+  // there, and report a payment error to a customer nothing has charged. Stripe
+  // moves response shapes and field availability the same way, and billing.ts
+  // reads `session.url` and the webhook's event payload out of whatever comes
+  // back. Stated as the literal for the same reason: the point is this version,
+  // not that some version is named.
+  assert.match(
+    stripeSrc,
+    /apiVersion: '2025-02-24\.acacia'/,
+    'the Stripe client is no longer pinned to the API version its responses are read against'
+  );
 });

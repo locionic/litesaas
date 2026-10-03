@@ -16,6 +16,44 @@ export const MIN_PASSWORD = 8;
 export const MAX_DESCRIPTION = 2000;
 
 /**
+ * An error whose message was written for the user, so a catch arm may hand it
+ * straight back as form state.
+ *
+ * The distinction is the whole point. A server action catches everything thrown
+ * inside it, and `err.message` on a driver fault is SQLite's own text — a
+ * constraint name, a column list, or, for SQLITE_CANTOPEN, the absolute path of
+ * the database file on the operator's disk. Painted into the form that tells the
+ * user about the box, and tells anyone who can make the database fail about it
+ * too. Throwing this for the messages we *mean* to show, and letting every other
+ * fault collapse to one generic line, keeps the first group and drops the second.
+ *
+ * `auth.ts` reaches the same result a different way: it maps the one driver code
+ * it recognises and `throw err` on the rest. That is right for signup, where the
+ * alternative to a specific message is a 500 and the form is gone anyway. Here
+ * the catch arm is already the form, so naming the class is the smaller change.
+ */
+export class UserError extends Error {}
+
+/**
+ * Read a text field off a submitted form.
+ *
+ * A server action accepts multipart/form-data, so a client can send any field
+ * as a File part — `formData.get('name') as string` would be a lie, and
+ * `File.prototype.trim` does not exist, which throws a TypeError and 500s the
+ * action on an unauthenticated POST. A non-string part is simply absent as far
+ * as these forms are concerned, so the field reads as empty and the ordinary
+ * "required" message comes back.
+ *
+ * Lives here, not in one action, because every action that reads a form has the
+ * same exposure: a server action is a plain POST endpoint and its shape is
+ * whatever the request body claims it is.
+ */
+export function formText(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
  * Deliberately loose: the only job is to reject input that is obviously not an
  * address (and so can never receive mail), not to adjudicate RFC 5322. A strict
  * pattern rejects valid addresses.

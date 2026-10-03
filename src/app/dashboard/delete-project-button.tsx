@@ -20,8 +20,8 @@ export default function DeleteProjectButton({ name }: { name: string }) {
     <button
       type="submit"
       className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-      title="Delete project"
-      aria-label="Delete project"
+      title={`Delete ${name}`}
+      aria-label={`Delete ${name}`}
       onClick={(e) => {
         if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) {
           e.preventDefault();

@@ -40,6 +40,37 @@ test('every response carries the baseline security headers', async () => {
   assert.match(byKey.get('strict-transport-security') ?? '', /max-age=\d{6,}/);
 });
 
+test('HSTS lasts a year, and it covers the subdomains', async () => {
+  // The value assertion above accepts any max-age of six or more digits. That is
+  // enough to reject `max-age=0` — the browser's off switch — and nothing more,
+  // so both edits that genuinely weaken the header pass it, and neither throws
+  // nor breaks anything:
+  //
+  //   max-age=999999      about eleven days, after which the policy lapses and a
+  //                       returning visitor is back to first-connect plaintext
+  //   includeSubDomains   dropped, so the policy is pinned on the one host the
+  //                       app runs on and nowhere else. Every other name under
+  //                       the operator's domain can still be fetched over plain
+  //                       HTTP, and a cookie scoped to the parent domain rides
+  //                       along on that request.
+  //
+  // A year is what the config ships and what browsers preload. Written as the
+  // literal, because a regex loose enough to pass at any value is a regex that
+  // does not check one.
+  const rules = await (config as { headers: () => Promise<unknown[]> }).headers();
+  const hsts = rules
+    .flatMap((r) => (r as { headers: { key: string; value: string }[] }).headers)
+    .find((h) => h.key.toLowerCase() === 'strict-transport-security');
+
+  assert.ok(hsts, 'the HSTS header is gone; this test needs revisiting');
+  assert.match(hsts.value, /^max-age=31536000;/, `HSTS lifetime is "${hsts.value}", not the year it ships`);
+  assert.match(
+    hsts.value,
+    /;\s*includeSubDomains\s*$/,
+    `includeSubDomains is missing from "${hsts.value}"`
+  );
+});
+
 test('the headers apply to every route, not a hand-picked few', () => {
   // `/:path*` is the difference between a hardened app and a hardened home
   // page; /api and /dashboard are where the session cookie matters.

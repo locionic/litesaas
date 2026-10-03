@@ -1,7 +1,13 @@
 # Litestream Continuous Streaming S3 Replication
 # Docs: https://litestream.io
 dbs:
-  - path: /app/data/app.db
+  # The same DATABASE_URL the app opens and the CMD restores. Litestream expands
+  # ${VAR} from its own environment — already relied on for the bucket below.
+  # A literal here instead would mean a different file the moment anyone changed
+  # DATABASE_URL: the app writes one database while replication faithfully ships
+  # another, one nothing ever writes, so the backups look healthy and restore
+  # nothing. That failure has no error message, which is the whole problem.
+  - path: ${DATABASE_URL}
     replicas:
       - type: s3
         bucket: "${LITESTREAM_BUCKET}"

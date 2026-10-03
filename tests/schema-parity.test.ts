@@ -50,6 +50,11 @@ const tables = {
 const sqlColumns = (table: string) =>
   (sqlite.prepare(`pragma table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
 
+const sqlColumnTypes = (table: string) =>
+  (
+    sqlite.prepare(`pragma table_info(${table})`).all() as { name: string; type: string }[]
+  ).map((c) => [c.name, c.type.toLowerCase()]);
+
 const declaredColumns = (table: Parameters<typeof getTableConfig>[0]) =>
   getTableConfig(table).columns.map((c) => c.name);
 
@@ -74,6 +79,72 @@ for (const [name, table] of Object.entries(tables)) {
     assert.deepEqual(sqlColumns(name), declaredColumns(table));
   });
 }
+
+test('the SQL column types match the Drizzle schema, not just the names', () => {
+  // The name parity above is not enough, and the difference is an outage rather
+  // than a wrong value. `sessions.expires_at` is read as
+  // `session.expiresAt.getTime()` — a method call on whatever the driver
+  // returned. Declared TEXT, SQLite hands back a string, and that is
+  // `TypeError: session.expiresAt.getTime is not a function` on every request
+  // the signed-in user makes, from the one file the container writes.
+  //
+  // Passing the name check while failing this one needs no exotic edit: anyone
+  // writing this DDL by hand out of Postgres habits writes TIMESTAMP, and
+  // `getTableConfig(...).columns.map(c => c.name)` does not notice that the
+  // column is still called `expires_at`.
+  for (const [name, table] of Object.entries(tables)) {
+    const expected = getTableConfig(table).columns.map((c) => [c.name, c.getSQLType()]);
+    assert.deepEqual(
+      sqlColumnTypes(name),
+      expected,
+      `${name}: the SQL storage class and the Drizzle column disagree`
+    );
+  }
+});
+
+test('every integer column is a timestamp, not a raw number', () => {
+  // The type check above is structurally blind to this one. Measured, not
+  // assumed: `getSQLType()` returns `integer` for `integer('expires_at')` and
+  // for `integer('expires_at', { mode: 'timestamp' })` alike — the mode is a
+  // Drizzle-side codec and never reaches SQL. So both halves of the drift this
+  // file exists to catch can agree, right up to the `.getTime()`.
+  //
+  // Two call sites depend on it, both on the signed-in path:
+  //
+  //   src/lib/auth.ts:73       session.expiresAt.getTime()   — the expiry check
+  //   src/app/dashboard/page.tsx:297   p.createdAt.toISOString()  — every row
+  //
+  // The first fails *quietly*, which is the part worth writing down. It sits
+  // inside the try whose catch returns null — the signal `getCurrentUser`
+  // documents for "there is no session here" — and the dashboard redirects null
+  // to /login. So dropping the mode signs every user out, everywhere, with one
+  // log line, and from the user's side it is indistinguishable from a cookie
+  // that aged out. An expiry check that fails open into a logout rather than a
+  // visible error is the worst shape this could take, and it is the one it took.
+  //
+  // Every integer column in this schema is a timestamp, so the filter below
+  // should never skip one; the count is here because a filter that matched
+  // nothing would pass this against any schema at all.
+  const integers: string[] = [];
+  for (const [name, table] of Object.entries(tables)) {
+    for (const column of getTableConfig(table).columns) {
+      if (column.getSQLType() !== 'integer') continue;
+      integers.push(`${name}.${column.name}`);
+      // `mode` is absent from drizzle 0.38's column type and present on the
+      // object — the codec is internal, not part of the declared surface.
+      const { mode } = column as { mode?: string };
+      assert.equal(
+        mode,
+        'timestamp',
+        `${name}.${column.name} is read as a Date at the call site; declared as a raw integer, .getTime() and .toISOString() are undefined on it`
+      );
+    }
+  }
+  assert.ok(
+    integers.length >= 8,
+    `this test inspected ${integers.length} integer columns and is about to stop proving anything`
+  );
+});
 
 test('the UNIQUE constraints the code relies on are in the SQL', () => {
   // registerAction turns SQLITE_CONSTRAINT_UNIQUE into a friendly "that email

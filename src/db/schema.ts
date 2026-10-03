@@ -22,6 +22,10 @@ export const subscriptions = sqliteTable('subscriptions', {
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
+  // The secret that ties a LemonSqueezy event back to this row. Set on the
+  // first checkout attempt and reused by every one after it, so a second click
+  // cannot orphan the first customer's paid order.
+  lemonNonce: text('lemon_nonce'),
   plan: text('plan', { enum: ['free', 'pro', 'enterprise'] }).default('free').notNull(),
   status: text('status', { enum: ['active', 'canceled', 'past_due', 'trialing'] }).default('active').notNull(),
   currentPeriodEnd: integer('current_period_end', { mode: 'timestamp' }),

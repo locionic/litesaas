@@ -1,12 +1,18 @@
 import Stripe from 'stripe';
 
 /**
- * `.env.example` ships placeholder values (sk_test_51..., price_1...). If those
- * are copied verbatim, treating them as live keys makes every checkout attempt
- * fail against the Stripe API. Treat obvious placeholders as "not configured"
- * so the zero-config dev demo still works.
+ * `.env.example` ships placeholder values (sk_test_51..., price_1..., whsec_...).
+ * If those are copied verbatim, treating them as live makes every attempt fail
+ * against the Stripe API. Treat obvious placeholders as "not configured" so the
+ * zero-config dev demo still works.
+ *
+ * Exported so the webhook signing secret gets the same reading as the API key.
+ * It is not optional in the way an unused variable is: `checkout.session.completed`
+ * is the only thing that turns a paid order into Pro, and a placeholder there
+ * fails signature verification on every delivery — silently, because the value
+ * is non-empty and so every truthiness test on it passes.
  */
-function isRealSecret(value: string | undefined): value is string {
+export function isRealSecret(value: string | undefined): value is string {
   if (!value) return false;
   if (value.includes('...') || value.includes('<')) return false;
   return value.length >= 20;

@@ -1,4 +1,8 @@
 import crypto from 'crypto';
+// Relative and with the extension, not the `@/` alias: tests/lemonsqueezy.test.ts
+// imports this module directly, and `node --test` resolves neither the alias
+// nor tsconfig paths. allowImportingTsExtensions is on for exactly this.
+import { isRealSecret } from './stripe.ts';
 
 const API_BASE = 'https://api.lemonsqueezy.com/v1';
 
@@ -14,8 +18,23 @@ export const lemonsqueezy = {
   webhookSecret: process.env.LEMONSQUEEZY_WEBHOOK_SECRET,
 };
 
+/**
+ * Whether the LemonSqueezy half is complete enough to sell through.
+ *
+ * Includes the webhook signing secret, which is easy to leave out: it is set in
+ * the LemonSqueezy dashboard rather than anywhere in this repo, and without it
+ * every order webhook 401s, so a paid customer keeps the free plan while the
+ * app tells them to wait. These four ship empty in .env.example, so `undefined`
+ * is the only absent form — but the same "is this actually filled in" rule the
+ * Stripe side uses costs one import and holds if a placeholder is added later.
+ */
 export function isLemonSqueezyConfigured(): boolean {
-  return Boolean(lemonsqueezy.apiKey && lemonsqueezy.storeId && lemonsqueezy.variantId);
+  return Boolean(
+    lemonsqueezy.apiKey &&
+      lemonsqueezy.storeId &&
+      lemonsqueezy.variantId &&
+      isRealSecret(lemonsqueezy.webhookSecret)
+  );
 }
 
 type Plan = 'free' | 'pro' | 'enterprise';
@@ -102,11 +121,25 @@ export function isProVariant(
 /**
  * Create a hosted checkout and return its URL.
  *
- * The `user_id` we stash in checkout_data.custom round-trips back to us on the
- * resulting order/subscription as `meta.custom_data.user_id`, which is how the
- * webhook knows which row to update.
+ * The `nonce` we stash in checkout_data.custom round-trips back to us on the
+ * resulting order/subscription as `meta.custom_data.checkout_nonce`, which is
+ * how the webhook knows which row to update. It is deliberately NOT the user id:
+ * `POST /v1/checkouts` is public, so anyone who knows the store id can set any
+ * field in `custom` on a checkout of their own making, and a user id there is
+ * simply their opinion of whose account to touch. The nonce is a secret we
+ * generated and already hold, so a forged checkout resolves to no row at all.
+ *
+ * `redirectUrl` is where LemonSqueezy returns the customer once they have paid.
+ * Without it the sale still completes and the webhook still grants Pro, but the
+ * customer is left sitting on LemonSqueezy's hosted thank-you page with no way
+ * back to the app they just bought — where Stripe already returns them to
+ * `/dashboard?upgraded=true`.
  */
-export async function createCheckout(params: { userId: string; email: string }): Promise<string | null> {
+export async function createCheckout(params: {
+  nonce: string;
+  email: string;
+  redirectUrl: string;
+}): Promise<string | null> {
   const { apiKey, storeId, variantId } = lemonsqueezy;
   if (!apiKey || !storeId || !variantId) return null;
 
@@ -125,8 +158,19 @@ export async function createCheckout(params: { userId: string; email: string }):
       data: {
         type: 'checkouts',
         attributes: {
+          // A SIBLING of checkout_data, not a field inside it. LemonSqueezy
+          // reads the post-purchase return address from
+          // product_options.redirect_url and ignores a checkout_data.redirect_url
+          // entirely, so nesting it one level down still leaves the customer
+          // stranded on the hosted page after paying. Verified against
+          // https://docs.lemonsqueezy.com/api/checkouts.
+          product_options: { redirect_url: params.redirectUrl },
           checkout_data: {
-            custom: { user_id: params.userId },
+            custom: { checkout_nonce: params.nonce },
+            // Prefills the form and is where LS sends the order receipt. The
+            // caller already passes the signed-in user's address; without this
+            // they retype it, and the receipt has nowhere to go.
+            email: params.email,
           },
         },
         relationships: {
