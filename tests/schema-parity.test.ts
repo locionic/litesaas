@@ -45,6 +45,7 @@ const tables = {
   sessions: schema.sessions,
   subscriptions: schema.subscriptions,
   projects: schema.projects,
+  api_keys: schema.apiKeys,
 };
 
 const sqlColumns = (table: string) =>
@@ -170,10 +171,14 @@ test('the UNIQUE constraints the code relies on are in the SQL', () => {
     uniqueColumnSets('subscriptions').some((cols) => cols.join() === 'user_id'),
     'subscriptions.user_id must stay UNIQUE — a second row would shadow the plan'
   );
+  assert.ok(
+    uniqueColumnSets('api_keys').some((cols) => cols.join() === 'key_hash'),
+    'api_keys.key_hash must stay UNIQUE — keys must be looked up by unique hash'
+  );
 });
 
 test('foreign keys cascade, so deleting a user cleans up their rows', () => {
-  const tablesWithFks = ['sessions', 'subscriptions', 'projects'];
+  const tablesWithFks = ['sessions', 'subscriptions', 'projects', 'api_keys'];
   for (const name of tablesWithFks) {
     const sql = sqlite
       .prepare("select sql from sqlite_master where type = 'table' and name = ?")
