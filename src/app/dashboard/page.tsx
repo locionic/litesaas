@@ -11,6 +11,7 @@ export const metadata: Metadata = { title: 'Dashboard' };
 import ProjectForm from './project-form';
 import EditProjectForm from './edit-project-form';
 import DeleteProjectButton from './delete-project-button';
+import DashboardUsage from './dashboard-usage';
 import { upgradeToProAction } from '@/app/actions/billing';
 import DeleteAccountForm from './delete-account-form';
 import {
@@ -332,6 +333,18 @@ export default async function DashboardPage({
           </div>
         </div>
       )}
+
+      {/* Usage analytics — the meter above answers "how close am I to being
+          stopped"; this answers "what is actually here" and "what does
+          archiving cost me", which is the question that meter invites and
+          cannot answer. Renders on Pro too, since an uncapped plan is the one
+          where the archived-vs-active split is the only number left. */}
+      <DashboardUsage
+        plan={user.subscriptionPlan}
+        activeCount={activeCount}
+        archivedCount={archivedCount}
+        projectLimit={projectLimit}
+      />
 
       {/* Engine Status & Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
