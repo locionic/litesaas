@@ -55,6 +55,12 @@ const dashboard = readFileSync(
 )
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
+const dashboardUsage = readFileSync(
+  fileURLToPath(new URL('../components/dashboard-usage.tsx', import.meta.url)),
+  'utf8'
+)
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const editForm = readFileSync(
   fileURLToPath(new URL('../src/app/dashboard/edit-project-form.tsx', import.meta.url)),
@@ -567,21 +573,21 @@ test('the usage meter reads the numbers the create button reads', () => {
   // this bug: search for a project that is not active, and the meter reads
   // empty while the server is still refusing the fourth create.
   assert.match(
-    dashboard,
+    dashboardUsage,
     /activeCount \/ projectLimit\)\s*\*\s*100/,
     'the meter does not measure activeCount against projectLimit'
   );
   assert.match(dashboard, /const atProjectLimit = activeCount >= projectLimit;/);
   assert.doesNotMatch(
-    dashboard,
+    dashboardUsage,
     /visibleProjects[\s\S]{0,80}projectLimit/,
     'the meter is measuring the filtered list'
   );
 
   // And it is hidden when there is no cap, rather than drawn full.
   assert.match(
-    dashboard,
-    /user\.subscriptionPlan !== 'pro' && \([\s\S]{0,400}?Plan usage/,
+    dashboardUsage,
+    /isPro/,
     'the meter is not hidden on Pro'
   );
 });
@@ -600,15 +606,18 @@ test('nothing on the dashboard offers a Pro user something Pro does not need', (
 // matched loosely. The window is generous because it has to span the longest of
 // the two cards; a lazy `{0,400}?` silently matches nothing here, which is why
 // the count assertion below exists rather than an assumed match.
-const hidden = [...dashboard.matchAll(/\{user\.subscriptionPlan !== 'pro' && \(([\s\S]{0,1500}?)\n\s*\)\}/g)]
+const hiddenDashboard = [...dashboard.matchAll(/\{user\.subscriptionPlan !== 'pro' && \(([\s\S]{0,1500}?)\n\s*\)\}/g)]
     .map((m) => m[1]);
-  assert.ok(hidden.length >= 2, `expected the meter and the upgrade form to hide at Pro, found ${hidden.length}`);
+const hiddenUsage = [...dashboardUsage.matchAll(/\{!isPro && \(?([\s\S]{0,1500}?)\n\s*\)?\}/g)]
+    .map((m) => m[1]);
+  assert.ok(hiddenDashboard.length >= 1, `expected the upgrade form to hide at Pro, found ${hiddenDashboard.length}`);
+  assert.ok(hiddenUsage.length >= 1, `expected the meter to hide at Pro, found ${hiddenUsage.length}`);
   assert.ok(
-    hidden.some((block) => block.includes('upgradeToProAction')),
+    hiddenDashboard.some((block) => block.includes('upgradeToProAction')),
     'the upgrade button is still offered to a Pro account'
   );
   assert.ok(
-    hidden.some((block) => block.includes('Plan usage')),
+    hiddenUsage.some((block) => block.includes('progressbar')),
     'the usage meter is still drawn on a Pro account'
   );
 });

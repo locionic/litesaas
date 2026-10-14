@@ -10,6 +10,7 @@ import { deleteProjectAction, toggleProjectStatusAction } from '@/app/actions/pr
 export const metadata: Metadata = { title: 'Dashboard' };
 import ProjectForm from './project-form';
 import EditProjectForm from './edit-project-form';
+import DashboardUsage from '@/components/dashboard-usage';
 import DeleteProjectButton from './delete-project-button';
 import { upgradeToProAction } from '@/app/actions/billing';
 import DeleteAccountForm from './delete-account-form';
@@ -23,13 +24,14 @@ import {
   LogOut,
   FolderGit2,
   Calendar,
-  Layers,
+  
   Download,
   Search,
   Pencil,
   TriangleAlert,
   AlertCircle,
   CheckCircle2,
+  Layers,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import LocalDate from './local-date';
@@ -300,37 +302,16 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Plan usage — the one number that is about to stop the user doing
-          something, so it gets a shape rather than a sentence. Pro has no cap,
-          which is why this is conditional rather than showing a full bar. */}
       {user.subscriptionPlan !== 'pro' && (
-        <div className="rounded-2xl border border-white/10 bg-[#121217] px-5 py-4 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-zinc-400 flex items-center gap-1.5">
-              <Layers className="h-3.5 w-3.5 text-emerald-400" />
-              Plan usage
-            </span>
-            <span
-              className={`font-mono ${atProjectLimit ? 'text-amber-400' : 'text-zinc-400'}`}
-            >
-              {activeCount} of {projectLimit} active
-              {atProjectLimit ? ' — archive one to make room' : ''}
-            </span>
-          </div>
-          <div
-            className="h-1.5 rounded-full bg-white/5 overflow-hidden"
-            role="progressbar"
-            aria-valuenow={activeCount}
-            aria-valuemin={0}
-            aria-valuemax={projectLimit}
-            aria-label="Active projects used"
-          >
-            <div
-              className={`h-full rounded-full ${atProjectLimit ? 'bg-amber-400' : 'bg-emerald-500'}`}
-              style={{ width: `${Math.min(100, (activeCount / projectLimit) * 100)}%` }}
-            />
-          </div>
-        </div>
+        {/* Plan usage — the one number that is about to stop the user doing
+            something, so it gets a shape rather than a sentence. Pro has no cap,
+            which is why this is conditional rather than showing a full bar. */}
+        <DashboardUsage
+          activeCount={activeCount}
+          projectLimit={projectLimit}
+          atProjectLimit={atProjectLimit}
+          subscriptionPlan={user.subscriptionPlan}
+        />
       )}
 
       {/* Engine Status & Metrics */}
