@@ -148,3 +148,139 @@ export function toJson(account: ExportAccount, projects: ExportRow[], now: Date 
     2
   )}\n`;
 }
+
+/**
+ * Serialized metadata representation for exported projects.
+ */
+export interface ActiveProjectMetadata {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Summary metrics included in structured backup packages.
+ */
+export interface BackupExportSummary {
+  version: string;
+  exportedAt: string;
+  totalProjects: number;
+  activeProjects: number;
+  archivedProjects: number;
+}
+
+/**
+ * Structured project export & backup payload.
+ */
+export interface StructuredProjectBackup {
+  metadata: BackupExportSummary;
+  projects: ActiveProjectMetadata[];
+  account?: ExportAccount | null;
+}
+
+/**
+ * Packages active project metadata, timestamps, and status into a structured backup object.
+ * By default packages active projects (`activeOnly: true`), but can include all projects if specified.
+ */
+export function packageActiveProjects(
+  projects: ExportRow[],
+  options?: {
+    activeOnly?: boolean;
+    now?: Date;
+    account?: ExportAccount | null;
+  }
+): StructuredProjectBackup {
+  const now = options?.now ?? new Date();
+  const activeOnly = options?.activeOnly ?? true;
+
+  const activeProjectsCount = projects.filter((p) => p.status === 'active').length;
+  const archivedProjectsCount = projects.filter((p) => p.status === 'archived').length;
+
+  const targetProjects = activeOnly
+    ? projects.filter((p) => p.status === 'active')
+    : projects;
+
+  const formattedProjects: ActiveProjectMetadata[] = targetProjects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description ?? null,
+    status: p.status,
+    createdAt: (p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt)).toISOString(),
+    updatedAt: (p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt)).toISOString(),
+  }));
+
+  const metadata: BackupExportSummary = {
+    version: '1.0.0',
+    exportedAt: now.toISOString(),
+    totalProjects: projects.length,
+    activeProjects: activeProjectsCount,
+    archivedProjects: archivedProjectsCount,
+  };
+
+  return {
+    metadata,
+    projects: formattedProjects,
+    account: options?.account ?? null,
+  };
+}
+
+/**
+ * Serializes a structured project backup into formatted JSON with trailing newline.
+ */
+export function serializeBackupJson(backup: StructuredProjectBackup): string {
+  return `${JSON.stringify(backup, null, 2)}\n`;
+}
+
+/**
+ * Serializes project metadata into an RFC 4180 compliant CSV string with trailing newline.
+ * Guards against spreadsheet formula injection.
+ */
+export function serializeBackupCsv(
+  projects: (ExportRow | ActiveProjectMetadata)[],
+  options?: { activeOnly?: boolean }
+): string {
+  const activeOnly = options?.activeOnly ?? false;
+  const target = activeOnly ? projects.filter((p) => p.status === 'active') : projects;
+
+  const rows: ExportRow[] = target.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description ?? null,
+    status: p.status,
+    createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
+    updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
+  }));
+
+  return toCsv(rows);
+}
+
+/**
+ * High-level project export and backup serialization helper.
+ * Packages current active project metadata, timestamps, and status into structured exports
+ * for both JSON and CSV formats.
+ */
+export function createProjectBackup(
+  projects: ExportRow[],
+  account?: ExportAccount | null,
+  options?: { activeOnly?: boolean; now?: Date }
+) {
+  const now = options?.now ?? new Date();
+  const packaged = packageActiveProjects(projects, {
+    account,
+    activeOnly: options?.activeOnly ?? true,
+    now,
+  });
+
+  const jsonContent = serializeBackupJson(packaged);
+  const csvContent = serializeBackupCsv(packaged.projects);
+
+  return {
+    package: packaged,
+    json: jsonContent,
+    csv: csvContent,
+    filename: (ext: 'json' | 'csv') => filename(ext, now),
+  };
+}
